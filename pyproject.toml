@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "notebook-lens"
+version = "0.1.0"
+description = "Agent-facing CLI for iterating on standard Jupyter notebooks."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "ipykernel>=6.29",
+  "jupyter-client>=8.6",
+  "nbformat>=5.10",
+]
+
+[project.scripts]
+notebook-lens = "notebook_lens.cli:main"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.notebook_lens",
+  "/.venv",
+  "/artifacts",
+  "/notebooks",
+  "/tmp",
+  "/uv.lock",
+  "**/__pycache__",
+  "**/*.pyc",
+]

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://notebook-lens.local/schemas/cli-json-envelope-v1.schema.json",
+  "title": "Notebook Lens CLI JSON Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "notebook_lens_version",
+    "command",
+    "exit_code",
+    "text",
+    "data"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "notebook_lens_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "text": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "notebook_status",
+            "cell_status",
+            "cell_execution",
+            "state",
+            "show_cell",
+            "export_output",
+            "run_clean",
+            "list",
+            "env",
+            "error"
+          ]
+        }
+      }
+    }
+  }
+}
