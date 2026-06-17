@@ -55,15 +55,23 @@ flowchart LR
 
 ## Quickstart
 
-```sh
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install -e .
+Install Notebook Lens once on the machine:
 
+```sh
+python -m pip install notebook-lens
+```
+
+Then run it inside a notebook project:
+
+```sh
+cd /Documents/project_1
 notebook-lens new explore.ipynb
 notebook-lens add-code explore.ipynb --desc "Probe" --code 'print("hello")'
 notebook-lens state explore.ipynb --outputs summary
 ```
+
+Kernel Python rule: active venv works by default; with a global CLI and inactive
+project venv, set `NL_KERNEL_PYTHON="$PWD/.venv/bin/python"`.
 
 Open the notebook with your normal viewer:
 
