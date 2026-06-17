@@ -7,8 +7,8 @@ class NotebookLensError(Exception):
     """Base class for user-facing Notebook Lens errors."""
 
 
-class PathOutsideNotebookDirError(NotebookLensError):
-    """Raised when a requested notebook path escapes the configured notebook dir."""
+class PathOutsideProjectError(NotebookLensError):
+    """Raised when a requested notebook path escapes the configured project root."""
 
 
 class NotebookChangedError(NotebookLensError):

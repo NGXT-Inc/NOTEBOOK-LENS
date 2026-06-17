@@ -78,8 +78,8 @@ MARKDOWN_FILE_HELP = (
     "For remote SSH wrappers, prefer a synced file path because stdin may not be forwarded."
 )
 NOTEBOOK_PATH_HELP = (
-    "Notebook path relative to NL_NOTEBOOK_DIR, absolute under NL_NOTEBOOK_DIR, "
-    "or prefixed with the notebook dir name from NL_EXPERIMENT_DIR."
+    "Notebook path relative to NL_EXPERIMENT_DIR/current project root, "
+    "or absolute under that root."
 )
 LEGACY_COMMAND_ALIASES = {
     "run-cell": "add-code",
@@ -203,10 +203,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_clean = sub.add_parser(
         "run-clean",
-        help="rerun code cells from a fresh kernel without deleting artifacts",
+        help="rerun code cells from a fresh kernel",
         description=(
-            "Rerun all code cells top-to-bottom from a fresh kernel. Existing artifacts "
-            "are not deleted; preexisting files remain visible in the artifact inventory."
+            "Rerun all code cells top-to-bottom from a fresh kernel. "
+            "This rewrites notebook cell outputs but does not manage external files."
         ),
     )
     run_clean.add_argument("path", help=NOTEBOOK_PATH_HELP)
@@ -237,19 +237,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     env_cmd = sub.add_parser(
         "env",
-        help="print resolved Notebook Lens paths and artifact scope",
+        help="print resolved Notebook Lens paths",
         description=(
-            "Print resolved paths from NL_EXPERIMENT_DIR, NL_NOTEBOOK_DIR, "
-            "NL_RUNTIME_DIR, NL_KERNEL_PYTHON, NL_ARTIFACT_DIR, and ML_ARTIFACT_DIR. "
-            "With a notebook path, shows the artifact scope that notebook commands use."
-        ),
-    )
-    env_cmd.add_argument(
-        "path",
-        nargs="?",
-        help=(
-            "Optional notebook path. If NL_ARTIFACT_DIR and ML_ARTIFACT_DIR are unset, "
-            "this shows the inferred per-notebook artifact scope."
+            "Print resolved paths from NL_EXPERIMENT_DIR, NL_RUNTIME_DIR, "
+            "and NL_KERNEL_PYTHON."
         ),
     )
     _add_json_flag(env_cmd)
@@ -385,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "list":
             result = cmd_list(config)
         elif args.command == "env":
-            result = cmd_env(config, args.path)
+            result = cmd_env(config)
         elif args.command == "run-clean":
             result = cmd_run_clean(args.path, config, timeout=args.timeout)
         else:

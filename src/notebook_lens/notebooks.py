@@ -18,6 +18,19 @@ from .errors import CellExecutionError, NotebookChangedError
 
 META_KEY = "notebook_lens"
 CHECKPOINT_DIR_NAME = ".ipynb_checkpoints"
+SKIPPED_NOTEBOOK_DIR_NAMES = {
+    CHECKPOINT_DIR_NAME,
+    ".git",
+    ".hg",
+    ".svn",
+    ".notebook_lens",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+}
 
 
 def now_iso() -> str:
@@ -54,15 +67,24 @@ def load_notebook(path: Path) -> NotebookNode:
 
 
 def notebook_files(root: Path) -> list[Path]:
-    """Return user-facing notebook files under root, excluding Jupyter checkpoints."""
+    """Return user-facing notebook files under root, excluding generated folders."""
 
     if not root.exists():
         return []
-    return [
-        path
-        for path in sorted(root.rglob("*.ipynb"))
-        if CHECKPOINT_DIR_NAME not in path.parts
-    ]
+    files: list[Path] = []
+    for path in sorted(root.rglob("*.ipynb")):
+        try:
+            parent_parts = path.relative_to(root).parts[:-1]
+        except ValueError:
+            continue
+        if any(_skip_notebook_scan_dir(part) for part in parent_parts):
+            continue
+        files.append(path)
+    return files
+
+
+def _skip_notebook_scan_dir(part: str) -> bool:
+    return part in SKIPPED_NOTEBOOK_DIR_NAMES or part.startswith(".")
 
 
 def ensure_cell_ids(nb: NotebookNode) -> bool:

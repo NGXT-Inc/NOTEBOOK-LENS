@@ -5,12 +5,6 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .artifacts import (
-    artifact_changes,
-    artifact_inventory,
-    artifact_scopes,
-    artifact_snapshot,
-)
 from .cell_state import (
     SOURCE_HASH_ALGORITHM,
     cell_failed,
@@ -103,7 +97,6 @@ def cmd_run_cell(
     _require_source(source, "code")
     config.ensure_dirs()
     notebook = resolve_notebook_path(path, config)
-    artifacts_before = artifact_snapshot(config, notebook)
     with notebook_lock(config, notebook, "add-code"):
         session = _session(config, notebook)
         expected_hash = file_hash(notebook.path)
@@ -134,9 +127,6 @@ def cmd_run_cell(
             kernel_unsafe=result.kernel_reset,
             unsafe_reason=_kernel_reset_reason(result),
         )
-    artifacts_after = artifact_snapshot(config, notebook)
-    changes = artifact_changes(artifacts_before, artifacts_after)
-    scopes = artifact_scopes(config, notebook)
     next_action = failed_cell_next_action(cell) if not result.ok else None
     return cell_command_result(
         path,
@@ -144,9 +134,6 @@ def cmd_run_cell(
         index,
         cell,
         result,
-        config=config,
-        artifact_changes=changes,
-        artifact_scope=scopes,
         next_action=next_action,
     )
 
@@ -164,7 +151,6 @@ def cmd_update_cell(
     _require_source(source, "code")
     config.ensure_dirs()
     notebook = resolve_notebook_path(path, config)
-    artifacts_before = artifact_snapshot(config, notebook)
     with notebook_lock(config, notebook, "update-code"):
         session = _session(config, notebook)
         expected_hash = file_hash(notebook.path)
@@ -228,8 +214,6 @@ def cmd_update_cell(
             kernel_unsafe=result.kernel_reset,
             unsafe_reason=_kernel_reset_reason(result),
     )
-    changes = artifact_changes(artifacts_before, artifact_snapshot(config, notebook))
-    scopes = artifact_scopes(config, notebook)
     next_action = failed_cell_next_action(cell) if not result.ok else None
     if result.ok and stale_indices:
         next_action = stale_next_action(nb, stale_code_indices, stale_markdown_indices)
@@ -245,9 +229,6 @@ def cmd_update_cell(
         index,
         cell,
         result,
-        config=config,
-        artifact_changes=changes,
-        artifact_scope=scopes,
         stale_indices=stale_indices,
         stale_code_indices=stale_code_indices,
         stale_markdown_indices=stale_markdown_indices,
@@ -558,31 +539,24 @@ def cmd_reset(path: str, config: LensConfig) -> CommandResult:
 
 def cmd_list(config: LensConfig) -> CommandResult:
     notebook_rels = []
-    for path in notebook_files(config.notebook_dir):
+    root = config.experiment_dir.resolve(strict=False)
+    for path in notebook_files(root):
         try:
-            rel = path.resolve(strict=False).relative_to(config.notebook_dir).as_posix()
+            rel = path.resolve(strict=False).relative_to(root).as_posix()
         except ValueError:
             continue
         notebook_rels.append(rel)
     return list_command_result(config, notebook_rels)
 
 
-def cmd_env(config: LensConfig, path: str | None = None) -> CommandResult:
-    notebook = resolve_notebook_path(path, config) if path else None
-    artifact_scope = artifact_scopes(config, notebook)[0]
-    return env_command_result(
-        config,
-        artifact_scope,
-        notebook=notebook,
-        path_provided=path is not None,
-    )
+def cmd_env(config: LensConfig) -> CommandResult:
+    return env_command_result(config)
 
 
 def cmd_run_clean(path: str, config: LensConfig, *, timeout: float = 120) -> CommandResult:
     config.ensure_dirs()
     notebook = resolve_notebook_path(path, config)
     started = time.perf_counter()
-    artifacts_before = artifact_snapshot(config, notebook)
     with notebook_lock(config, notebook, "run-clean"):
         expected_hash = file_hash(notebook.path)
         _require_existing_notebook(notebook, expected_hash)
@@ -654,9 +628,6 @@ def cmd_run_clean(path: str, config: LensConfig, *, timeout: float = 120) -> Com
         )
 
     elapsed = time.perf_counter() - started
-    artifacts_after = artifact_snapshot(config, notebook)
-    changes = artifact_changes(artifacts_before, artifacts_after)
-    scopes = artifact_scopes(config, notebook)
     env_lines = safe_env_lines()
     output_lines = execution_summary_lines(executed_results, input_path=path)
     remaining = dirty_cell_indices(nb) if status == "ok" else []
@@ -684,11 +655,6 @@ def cmd_run_clean(path: str, config: LensConfig, *, timeout: float = 120) -> Com
         exit_code=exit_code,
         env_lines=env_lines,
         output_lines=output_lines,
-        preexisting_artifact_count=len(artifacts_before),
-        config=config,
-        artifact_scope=scopes,
-        artifact_changes=changes,
-        artifact_inventory=artifact_inventory(artifacts_after),
         executed_results=executed_results,
         remaining_stale_cell_indices=remaining,
         remaining_next_action=remaining_next_action,

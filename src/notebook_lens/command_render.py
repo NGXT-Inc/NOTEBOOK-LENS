@@ -7,14 +7,7 @@ from dataclasses import dataclass
 from shlex import quote
 from typing import Any
 
-from .artifacts import (
-    ArtifactChange,
-    ArtifactInventoryItem,
-    ArtifactScope,
-    display_path,
-)
 from .cell_state import cell_status
-from .env import LensConfig
 from .errors import NotebookLensError
 from .executor import ExecutionResult
 from .rich_export import ExportedRichOutput, SkippedRichOutput
@@ -30,7 +23,6 @@ from .text_render import (
 
 PRINT_LIMIT = 3000
 FULL_OUTPUT_HINT_LIMIT = 20000
-ARTIFACT_LINE_LIMIT = 20
 RICH_OUTPUT_CLEANUP_NOTE = "export-output writes files only when requested; remove them when done"
 
 
@@ -150,7 +142,6 @@ def export_output_command_result(
 def list_command_result(config, notebook_rels: list[str]) -> CommandResult:
     lines = [
         f"experiment_dir: {config.experiment_dir}",
-        f"notebook_dir: {config.notebook_dir}",
         "notebooks:",
     ]
     if not notebook_rels:
@@ -162,75 +153,26 @@ def list_command_result(config, notebook_rels: list[str]) -> CommandResult:
         data={
             "kind": "list",
             "experiment_dir": str(config.experiment_dir),
-            "notebook_dir": str(config.notebook_dir),
             "notebooks": notebook_rels,
         },
     )
 
 
-def env_command_result(
-    config, artifact_scope, *, notebook=None, path_provided: bool = False
-) -> CommandResult:
+def env_command_result(config) -> CommandResult:
     lines = [
         f"experiment_dir: {config.experiment_dir}",
-        f"notebook_dir: {config.notebook_dir}",
         f"runtime_dir: {config.runtime_dir}",
         f"sessions_dir: {config.sessions_dir}",
         f"kernel_python: {config.kernel_python}",
-        f"artifact_dir: {artifact_scope.root}",
-        f"artifact_source: {artifact_scope.source}",
     ]
-    if path_provided and notebook is not None:
-        lines.append(f"artifact_notebook: {notebook.rel}")
-        if artifact_scope.source != "inferred":
-            lines.append(
-                "artifact_note: explicit artifact env overrides inferred per-notebook scope"
-            )
-    elif artifact_scope.source == "fallback":
-        lines.append("artifact_note: pass a notebook path to show inferred per-notebook scope")
     data: dict[str, Any] = {
         "kind": "env",
         "experiment_dir": str(config.experiment_dir),
-        "notebook_dir": str(config.notebook_dir),
         "runtime_dir": str(config.runtime_dir),
         "sessions_dir": str(config.sessions_dir),
         "kernel_python": str(config.kernel_python),
-        "artifact_dir": str(artifact_scope.root),
-        "artifact_source": artifact_scope.source,
     }
-    if path_provided and notebook is not None:
-        data["artifact_notebook"] = str(notebook.rel)
-        if artifact_scope.source != "inferred":
-            data["artifact_note"] = "explicit artifact env overrides inferred per-notebook scope"
-    elif artifact_scope.source == "fallback":
-        data["artifact_note"] = "pass a notebook path to show inferred per-notebook scope"
     return CommandResult("\n".join(lines) + "\n", data=data)
-
-
-def artifact_scope_lines(config: LensConfig, scopes: list[ArtifactScope]) -> list[str]:
-    return [f"- {display_path(config, scope.root)} ({scope.source})" for scope in scopes]
-
-
-def artifact_change_lines(changes: list[ArtifactChange]) -> list[str]:
-    lines = [_artifact_change_line(change) for change in changes]
-    if len(lines) > ARTIFACT_LINE_LIMIT:
-        return [
-            *lines[:ARTIFACT_LINE_LIMIT],
-            f"- ... {len(lines) - ARTIFACT_LINE_LIMIT} more artifact changes",
-        ]
-    return lines
-
-
-def artifact_inventory_lines(items: list[ArtifactInventoryItem]) -> list[str]:
-    if not items:
-        return ["- none"]
-    lines = [f"- {item.path} ({item.size} bytes)" for item in items]
-    if len(lines) > ARTIFACT_LINE_LIMIT:
-        return [
-            *lines[:ARTIFACT_LINE_LIMIT],
-            f"- ... {len(lines) - ARTIFACT_LINE_LIMIT} more artifacts",
-        ]
-    return lines
 
 
 def notebook_data(input_path: str, notebook) -> dict[str, str]:
@@ -329,9 +271,6 @@ def cell_command_result(
     cell,
     result: ExecutionResult,
     *,
-    artifact_changes: list[ArtifactChange] | None = None,
-    artifact_scope: list[ArtifactScope] | None = None,
-    config: LensConfig | None = None,
     stale_indices: list[int] | None = None,
     stale_code_indices: list[int] | None = None,
     stale_markdown_indices: list[int] | None = None,
@@ -396,12 +335,6 @@ def cell_command_result(
             )
             if stale_markdown_refs:
                 lines.append(f"stale_downstream_markdown_cell_refs: {stale_markdown_refs}")
-    if artifact_changes:
-        if artifact_scope and config is not None:
-            lines.append("artifact_scope:")
-            lines.extend(artifact_scope_lines(config, artifact_scope))
-        lines.append("artifacts:")
-        lines.extend(artifact_change_lines(artifact_changes))
     if next_action:
         lines.append(f"next_action: {next_action}")
     data: dict[str, Any] = {
@@ -436,10 +369,6 @@ def cell_command_result(
             "markdown_refs": stale_markdown_refs or "",
         }
         data["provisional"] = provisional
-    if artifact_scope and config is not None:
-        data["artifact_scope"] = artifact_scope_data(config, artifact_scope)
-    if artifact_changes:
-        data["artifact_changes"] = artifact_change_data(artifact_changes)
     if next_action:
         data["next_action"] = next_action
     return CommandResult(
@@ -460,11 +389,6 @@ def run_clean_command_result(
     exit_code: int,
     env_lines: list[str] | None = None,
     output_lines: list[str] | None = None,
-    preexisting_artifact_count: int = 0,
-    config: LensConfig | None = None,
-    artifact_scope: list[ArtifactScope] | None = None,
-    artifact_changes: list[ArtifactChange] | None = None,
-    artifact_inventory: list[ArtifactInventoryItem] | None = None,
     executed_results: list[tuple[int, object, ExecutionResult]] | None = None,
     remaining_stale_cell_indices: list[int] | None = None,
     remaining_next_action: str | None = None,
@@ -488,22 +412,6 @@ def run_clean_command_result(
     if output_lines:
         lines.append("cell_outputs:")
         lines.extend(output_lines)
-    if preexisting_artifact_count:
-        lines.append(
-            f"artifact_note: {preexisting_artifact_count} preexisting files in scope; "
-            "run-clean does not delete artifacts."
-        )
-    if artifact_changes:
-        lines.append("artifact_scope:")
-        lines.extend(artifact_scope_lines(config, artifact_scope or []) if config else [])
-        lines.append("artifacts:")
-        lines.extend(artifact_change_lines(artifact_changes))
-    if preexisting_artifact_count:
-        if not artifact_changes:
-            lines.append("artifact_scope:")
-            lines.extend(artifact_scope_lines(config, artifact_scope or []) if config else [])
-        lines.append("artifact_inventory:")
-        lines.extend(artifact_inventory_lines(artifact_inventory or []))
     if remaining_stale_cell_indices:
         stale_list = ", ".join(str(item) for item in remaining_stale_cell_indices)
         lines.append(f"remaining_stale_cell_indices: {stale_list}")
@@ -530,14 +438,6 @@ def run_clean_command_result(
         data["cell_outputs_text"] = output_lines
     if executed_results is not None:
         data["cell_outputs"] = execution_summary_data(executed_results, input_path=input_path)
-    if preexisting_artifact_count:
-        data["preexisting_artifact_count"] = preexisting_artifact_count
-    if artifact_scope and config is not None:
-        data["artifact_scope"] = artifact_scope_data(config, artifact_scope)
-    if artifact_changes:
-        data["artifact_changes"] = artifact_change_data(artifact_changes)
-    if artifact_inventory:
-        data["artifact_inventory"] = artifact_inventory_data(artifact_inventory)
     if remaining_stale_cell_indices:
         data["remaining_stale_cell_indices"] = remaining_stale_cell_indices
         if remaining_next_action:
@@ -597,33 +497,8 @@ def user_error(exc: Exception) -> CommandResult:
     )
 
 
-def artifact_scope_data(config: LensConfig, scopes: list[ArtifactScope]) -> list[dict[str, str]]:
-    return [
-        {
-            "path": display_path(config, scope.root),
-            "root": str(scope.root),
-            "source": scope.source,
-        }
-        for scope in scopes
-    ]
-
-
-def artifact_change_data(changes: list[ArtifactChange]) -> list[dict[str, Any]]:
-    return [asdict(change) for change in changes]
-
-
-def artifact_inventory_data(items: list[ArtifactInventoryItem]) -> list[dict[str, Any]]:
-    return [asdict(item) for item in items]
-
-
 def _one_line(text: str) -> str:
     return " ".join(text.strip().split())
-
-
-def _artifact_change_line(change: ArtifactChange) -> str:
-    if change.status == "deleted":
-        return f"- {change.path} (deleted)"
-    return f"- {change.path} ({change.size} bytes, {change.status})"
 
 
 def _append_excerpt(lines: list[str], label: str, text: str, *, limit: int) -> bool:
