@@ -55,10 +55,11 @@ flowchart LR
 
 ## Quickstart
 
-Install Notebook Lens once on the machine:
+Install Notebook Lens once from this repo:
 
 ```sh
-python -m pip install notebook-lens
+uv tool install git+https://github.com/NGXT-Inc/NOTEBOOK-LENS.git
+# or: pipx install git+https://github.com/NGXT-Inc/NOTEBOOK-LENS.git
 ```
 
 Then run it inside a notebook project:
